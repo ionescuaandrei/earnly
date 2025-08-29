@@ -1,13 +1,13 @@
-import { StyleSheet, Text, View, TouchableOpacity, Dimensions, Image } from 'react-native';
-import React from 'react';
-import { router } from 'expo-router';
 import { COLORS } from '@/constants/Colors';
+import { router } from 'expo-router';
+import React from 'react';
+import { Dimensions, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 const { width, height } = Dimensions.get('window');
 
 const StartScreen = () => {
   const handleGetStarted = () => {
-    router.push('/(tabs)');
+    router.push('/(auth)');
   };
 
   return (
