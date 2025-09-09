@@ -1,0 +1,93 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+             exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    // Public rewards catalog - anyone can read
+    match /rewards/{rewardId} {
+      allow read: if true;
+      allow write: if isAdmin(); // Only admins can manage rewards
+    }
+
+    // User profiles
+    match /users/{uid} {
+      allow read: if isOwner(uid);
+      allow create: if isOwner(uid) && 
+        // Allow setting initial financial fields to 0, but not other values
+        (!('balance' in request.resource.data) || request.resource.data.balance == 0) &&
+        (!('totalEarned' in request.resource.data) || request.resource.data.totalEarned == 0) &&
+        (!('totalRedeemed' in request.resource.data) || request.resource.data.totalRedeemed == 0);
+      
+      // Users can only update profile fields, not financial data
+      allow update: if isOwner(uid) && 
+        // Financial fields can only be updated by server
+        (!('balance' in request.resource.data) || 
+         request.resource.data.balance == resource.data.balance) &&
+        (!('totalEarned' in request.resource.data) || 
+         request.resource.data.totalEarned == resource.data.totalEarned) &&
+        (!('totalRedeemed' in request.resource.data) || 
+         request.resource.data.totalRedeemed == resource.data.totalRedeemed) &&
+        // Flags can only be updated by server/admin
+        (!('flags' in request.resource.data) || 
+         request.resource.data.flags == resource.data.flags);
+      
+      allow delete: if false; // No deletion allowed
+    }
+
+    // User earnings history - read-only for users
+    match /userEarnings/{uid}/entries/{entryId} {
+      allow read: if isOwner(uid);
+      allow write: if false; // Server-only writes
+    }
+
+    // User redemptions history - read-only for users
+    match /redemptions/{uid}/items/{itemId} {
+      allow read: if isOwner(uid);
+      allow write: if false; // Server-only writes
+    }
+
+    // User notifications
+    match /notifications/{uid}/items/{notificationId} {
+      allow read: if isOwner(uid);
+      // Users can only mark notifications as read
+      allow update: if isOwner(uid) && 
+        request.resource.data.keys().hasOnly(['read', 'readAt']) &&
+        request.resource.data.read == true;
+      allow create, delete: if false; // Server-only
+    }
+
+    // Server-only collections
+    match /taskEvents/{docId} {
+      allow read, write: if false; // Completely server-only
+    }
+    
+    match /giftCodes/{rewardId}/codes/{codeId} {
+      allow read, write: if false; // Completely server-only
+    }
+
+    // Admin collection (for role checking)
+    match /admins/{uid} {
+      allow read: if isOwner(uid);
+      allow write: if false; // Set manually
+    }
+
+    // System configurations (public read for feature flags)
+    match /config/{configId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}

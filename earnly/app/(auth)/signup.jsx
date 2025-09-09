@@ -1,22 +1,23 @@
 import { COLORS } from '@/constants/Colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { createUserWithEmailAndPassword, } from "firebase/auth";
+import { createUserWithEmailAndPassword } from "firebase/auth";
 import React, { useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  Platform,
-  StyleSheet,
-  Text,
-  TextInput,
-  ToastAndroid,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    Alert,
+    Image,
+    Platform,
+    StyleSheet,
+    Text,
+    TextInput,
+    ToastAndroid,
+    TouchableOpacity,
+    View
 } from 'react-native';
 
 import { auth } from '@/configs/firebase';
+import { createUserProfile } from '@/utils/database';
 
 export default function signup() {
   
@@ -56,16 +57,37 @@ export default function signup() {
     setIsLoading(true);
 
     createUserWithEmailAndPassword(auth, email, password)
-      .then((userCredential) => {
+      .then(async (userCredential) => {
         // Signed up 
         const user = userCredential.user;
         console.log('User registered:', user);
-        showSuccess('Account created successfully!');
         
-        // Navigate to main app or login
-        setTimeout(() => {
+        // Create user profile in Firestore
+        try {
+          const profileData = {
+            email: user.email || email,
+            name: user.displayName || 'User',
+            country: 'RO' // You can detect this or ask user
+          };
+          
+          // Only add photoURL if it exists
+          if (user.photoURL) {
+            profileData.photoURL = user.photoURL;
+          }
+          
+          await createUserProfile(user.uid, profileData);
+          
+          showSuccess('Account created successfully!');
+          
+          // Navigate to main app
+          setTimeout(() => {
+            router.replace('/(tabs)/');
+          }, 1000);
+        } catch (profileError) {
+          console.error('Error creating profile:', profileError);
+          showError('Account created but profile setup failed. Please try logging in.');
           router.replace('/(auth)/');
-        }, 1000);
+        }
       })
       .catch((error) => {
         const errorCode = error.code;

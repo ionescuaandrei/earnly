@@ -1,7 +1,6 @@
 import { COLORS } from '@/constants/Colors';
 import { Ionicons } from '@expo/vector-icons';
 import { onAuthStateChanged } from "firebase/auth";
-import { doc, onSnapshot } from "firebase/firestore";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -10,6 +9,7 @@ import {
   Platform,
   Pressable,
   RefreshControl,
+  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -19,24 +19,48 @@ import {
 } from "react-native";
 import { WebView } from "react-native-webview";
 
-import { auth, db } from '@/configs/firebase';
+import { auth } from '@/configs/firebase';
+import { User } from '@/types/database';
+import { createUserProfile, subscribeToUser } from '@/utils/database';
 
 // Keep ONLY the public BitLabs token on the client
 const BITLABS_TOKEN = "cdd8da4d-184d-4043-b36e-6e90604bd2a8";
 
 export default function SurveysScreen() {
   const [uid, setUid] = useState<string | null>(null);
-  const [balance, setBalance] = useState<number>(0);
-  const [totalEarned, setTotalEarned] = useState<number>(0);
-  const [open, setOpen] = useState(false);
+  const [userData, setUserData] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [open, setOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [webViewLoading, setWebViewLoading] = useState(true);
 
   useEffect(() => {
-    const unsubAuth = onAuthStateChanged(auth, (user) => {
-      setUid(user?.uid ?? null);
-      if (!user) setLoading(false);
+    const unsubAuth = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        setUid(user.uid);
+        
+        // Create user profile if it doesn't exist
+        try {
+          const profileData: any = {
+            email: user.email || '',
+            name: user.displayName || 'User',
+            country: 'RO' // You can detect this or ask user
+          };
+          
+          // Only add photoURL if it exists
+          if (user.photoURL) {
+            profileData.photoURL = user.photoURL;
+          }
+          
+          await createUserProfile(user.uid, profileData);
+        } catch (error) {
+          console.log('User profile might already exist:', error);
+        }
+      } else {
+        setUid(null);
+        setUserData(null);
+        setLoading(false);
+      }
     });
     return unsubAuth;
   }, []);
@@ -44,21 +68,11 @@ export default function SurveysScreen() {
   useEffect(() => {
     if (!uid) return;
     
-    const unsubUser = onSnapshot(
-      doc(db, "users", uid), 
-      (snap) => {
-        const data = snap.data();
-        setBalance(data?.balance ?? 0);
-        setTotalEarned(data?.totalEarned ?? 0);
-        setLoading(false);
-        setRefreshing(false);
-      },
-      (error) => {
-        console.error("Error fetching user data:", error);
-        setLoading(false);
-        setRefreshing(false);
-      }
-    );
+    const unsubUser = subscribeToUser(uid, (user) => {
+      setUserData(user);
+      setLoading(false);
+      setRefreshing(false);
+    });
     
     return unsubUser;
   }, [uid]);
@@ -131,7 +145,7 @@ export default function SurveysScreen() {
             </View>
             <View style={styles.balanceInfo}>
               <Text style={styles.balanceLabel}>Current Balance</Text>
-              <Text style={styles.balanceAmount}>{balance.toLocaleString()}</Text>
+              <Text style={styles.balanceAmount}>{userData?.balance.toLocaleString() || '0'}</Text>
               <Text style={styles.balanceUnit}>credits</Text>
             </View>
           </View>
@@ -142,7 +156,7 @@ export default function SurveysScreen() {
             </View>
             <View style={styles.earningsInfo}>
               <Text style={styles.earningsLabel}>Total Earned</Text>
-              <Text style={styles.earningsAmount}>{totalEarned.toLocaleString()}</Text>
+              <Text style={styles.earningsAmount}>{userData?.totalEarned.toLocaleString() || '0'}</Text>
               <Text style={styles.earningsUnit}>credits</Text>
             </View>
           </View>
@@ -223,44 +237,47 @@ export default function SurveysScreen() {
         onRequestClose={() => setOpen(false)}
         presentationStyle="fullScreen"
       >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <View style={styles.modalHeaderLeft}>
-              <Ionicons name="document-text" size={24} color={COLORS.primary} />
-              <Text style={styles.modalTitle}>BitLabs Surveys</Text>
+        <SafeAreaView style={styles.modalSafeArea}>
+          <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalHeaderLeft}>
+                <Ionicons name="document-text" size={24} color={COLORS.primary} />
+                <Text style={styles.modalTitle}>BitLabs Surveys</Text>
+              </View>
+              <Pressable 
+                style={styles.closeButton}
+                onPress={() => setOpen(false)}
+              >
+                <Ionicons name="close" size={24} color={COLORS.text} />
+              </Pressable>
             </View>
-            <Pressable 
-              style={styles.closeButton}
-              onPress={() => setOpen(false)}
-            >
-              <Ionicons name="close" size={24} color={COLORS.text} />
-            </Pressable>
-          </View>
-          
-          <View style={styles.webviewContainer}>
-            <WebView
-              source={{ uri: offerwallUrl }}
-              startInLoadingState
-              onLoadStart={() => setWebViewLoading(true)}
-              onLoadEnd={() => setWebViewLoading(false)}
-              onMessage={handleWebViewMessage}
-              renderLoading={() => (
-                <View style={styles.webviewLoading}>
+            
+            <View style={styles.webviewContainer}>
+              <WebView
+                source={{ uri: offerwallUrl }}
+                startInLoadingState
+                onLoadStart={() => setWebViewLoading(true)}
+                onLoadEnd={() => setWebViewLoading(false)}
+                onMessage={handleWebViewMessage}
+                renderLoading={() => (
+                  <View style={styles.webviewLoading}>
+                    <ActivityIndicator size="large" color={COLORS.primary} />
+                    <Text style={styles.webviewLoadingText}>Loading surveys...</Text>
+                  </View>
+                )}
+                style={styles.webview}
+              />
+              
+              {webViewLoading && (
+                <View style={styles.webviewLoadingOverlay}>
                   <ActivityIndicator size="large" color={COLORS.primary} />
                   <Text style={styles.webviewLoadingText}>Loading surveys...</Text>
                 </View>
               )}
-              style={styles.webview}
-            />
-            
-            {webViewLoading && (
-              <View style={styles.webviewLoadingOverlay}>
-                <ActivityIndicator size="large" color={COLORS.primary} />
-                <Text style={styles.webviewLoadingText}>Loading surveys...</Text>
-              </View>
-            )}
+            </View>
           </View>
-        </View>
+        </SafeAreaView>
       </Modal>
     </View>
   );
@@ -504,6 +521,10 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   modalContainer: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  modalSafeArea: {
     flex: 1,
     backgroundColor: COLORS.background,
   },

@@ -6,6 +6,13 @@
  *
  * See a full list of supported triggers at https://firebase.google.com/docs/functions
  */
+
+import { initializeApp } from "firebase-admin/app";
+
+// Initialize Firebase Admin SDK
+initializeApp();
+
+export { cleanupExpiredReservations, redeemReward } from "./redemption";
 export { webhookBitlabs } from "./webhooks/bitlabs";
 
 import { setGlobalOptions } from "firebase-functions";

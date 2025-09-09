@@ -1,8 +1,8 @@
 import { COLORS } from '@/constants/Colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { signOut } from 'firebase/auth';
-import { useState } from 'react';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { useEffect, useState } from 'react';
 import {
   Alert,
   Platform,
@@ -15,17 +15,69 @@ import {
 } from 'react-native';
 
 import { auth } from '@/configs/firebase';
+import { User } from '@/types/database';
+import { createUserProfile, subscribeToUser } from '@/utils/database';
 
 const profile = () => {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
-  const email = auth.currentUser?.email;
- 
+  const [uid, setUid] = useState<string | null>(null);
+  const [userData, setUserData] = useState<User | null>(null);
   
-  // Mock user data - replace with actual user data from your state management
+  useEffect(() => {
+    const unsubAuth = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        setUid(user.uid);
+        
+        // Create user profile if it doesn't exist
+        try {
+          const profileData: any = {
+            email: user.email || '',
+            name: user.displayName || 'User',
+            country: 'RO' // You can detect this or ask user
+          };
+          
+          // Only add photoURL if it exists
+          if (user.photoURL) {
+            profileData.photoURL = user.photoURL;
+          }
+          
+          await createUserProfile(user.uid, profileData);
+        } catch (error) {
+          console.log('User profile might already exist:', error);
+        }
+      } else {
+        setUid(null);
+        setUserData(null);
+      }
+    });
+    return unsubAuth;
+  }, []);
+
+  useEffect(() => {
+    if (!uid) return;
+    
+    // Listen to user data
+    const unsubUser = subscribeToUser(uid, (user) => {
+      setUserData(user);
+    });
+    
+    return () => {
+      unsubUser();
+    };
+  }, [uid]);
+  
+  
+  // User data from database or fallback
   const userInfo = {
-    balance: 2450,
-    joinDate: "Member since Jan 2024"
+    balance: userData?.balance || 0,
+    joinDate: userData?.joinedAt 
+      ? `Member since ${userData.joinedAt instanceof Date 
+          ? userData.joinedAt.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+          : new Date((userData.joinedAt as any).toDate()).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}`
+      : "Member since recently",
+    email: userData?.email || auth.currentUser?.email || 'No email',
+    name: userData?.name || auth.currentUser?.displayName || 'User'
   };
 
   const showSuccess = (message: string) => {
@@ -53,7 +105,7 @@ const profile = () => {
             signOut(auth)
               .then(() => {
                 showSuccess('Signed out successfully');
-                router.replace('/(auth)/');
+                router.replace('/(auth)');
               })
               .catch((error) => {
                 console.error('Sign out error:', error);
@@ -116,12 +168,13 @@ const profile = () => {
         <View style={styles.avatarContainer}>
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>
-              {email ? email.charAt(0).toUpperCase() : 'U'}
+              {userInfo.email ? userInfo.email.charAt(0).toUpperCase() : 'U'}
             </Text>
           </View>
         </View>
         <View style={styles.userInfo}>
-          <Text style={styles.userEmail}>{email}</Text>
+          <Text style={styles.userName}>{userInfo.name}</Text>
+          <Text style={styles.userEmail}>{userInfo.email}</Text>
           <Text style={styles.joinDate}>{userInfo.joinDate}</Text>
         </View>
       </View>

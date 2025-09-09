@@ -8,7 +8,12 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "setup-database": "chmod +x ./scripts/setup-database.sh && ./scripts/setup-database.sh",
+    "init-db": "node scripts/initDatabase.js",
+    "deploy-rules": "firebase deploy --only firestore:rules",
+    "deploy-indexes": "firebase deploy --only firestore:indexes",
+    "deploy-functions": "firebase deploy --only functions"
   },
   "dependencies": {
     "@expo/vector-icons": "^14.1.0",
@@ -45,6 +50,8 @@
     "@types/react": "~19.0.10",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~9.2.0",
+    "firebase-tools": "^14.15.2",
+    "ts-node": "^10.9.2",
     "typescript": "~5.8.3"
   },
   "private": true
